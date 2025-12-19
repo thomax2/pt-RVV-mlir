@@ -1,0 +1,32 @@
+module {
+  func.func @main(%arg0: tensor<1x1x8x8xf32>) -> tensor<1x5xf32> {
+    %0 = "tosa.const"() <{values = dense_resource<torch_tensor_5_torch.float32> : tensor<5xf32>}> : () -> tensor<5xf32>
+    %1 = "tosa.const"() <{values = dense_resource<torch_tensor_2_torch.float32> : tensor<2xf32>}> : () -> tensor<2xf32>
+    %2 = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+    %3 = tosa.const_shape  {values = dense<[1, 1, 32]> : tensor<3xindex>} : () -> !tosa.shape<3>
+    %4 = tosa.const_shape  {values = dense<[1, 5]> : tensor<2xindex>} : () -> !tosa.shape<2>
+    %5 = "tosa.const"() <{values = dense<[[[[-0.0434637964], [-0.259585142], [0.0904722511]], [[0.0643031597], [0.121741802], [-0.12441501]], [[-0.18793647], [-0.0488690436], [0.208099276]]], [[[-0.21367678], [-2.47746706E-4], [0.0575312078]], [[0.299190253], [-0.126253173], [0.0712993443]], [[-0.133504912], [-0.0895605981], [0.0731403827]]]]> : tensor<2x3x3x1xf32>}> : () -> tensor<2x3x3x1xf32>
+    %6 = tosa.const_shape  {values = dense<[1, 8, 8, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+    %7 = "tosa.const"() <{values = dense<"0x809EAE3AD85EEBBD7AE7C6BD1ED3E1BDA7A613BE4DB9F1BDE8D4EDBCF5D11A3E575C0D3E5284A33DBDE82BBE6C093BBD2B05CFBD7E839C3D12BFDBBDD67F22BE58F787BC40FC383DA49C803DB6CCB33D1C60483D7AA7D53D803CA7BC45E3F6BD786FFA3CFE45C73D009253BBDB2716BEAC7D92BD87870CBE3A68E13D4CA0113D5871FE3CB0B108BE219BABBDEBF3AFBD094820BE78CD223DE26BB6BDC81107BEA93528BE3BAA073E58D780BC8219D3BDFE2E1FBE2174243EE0ABE9BBC0F099BC2DF0C1BD986E4EBD244A26BE583129BD01F714BE90FBCF3C9B0A25BEAA2EEABDC5B497BD36D8D8BD2083103DB614C33D8066A83B40C61F3CEF80BABDF2D5F33DBCECE8BDA8B6883CCC45033DD1DD22BE5D73013E6B9D133E67B6AEBD53D9323E746A223D0370333E4887DDBC8D7AF2BD7A3F65BDA85C01BE83F11F3E800209BE27C2CFBD18FBC6BC2031D03C29EE133E5D00043ED201FFBDE8D7603DFC8B293D3C9A0FBE70A581BDE045413DEC25FCBDD4223D3D5E11A73D81A4BFBD60A29E3B5E42ED3D9D2B86BD763D30BE21408CBD9A476FBDC07ACB3BF14231BEFBEDA9BDA16909BEBA33C33D08F7553D743496BD1AC6C63D08710BBE54E6473D6059E03C1CBE323DA0E08A3BB6959E3D4B1BE5BD062CD63D55F30B3E785F98BD202B6C3C04B8933D666F7FBD1591003EC2F5DABD4B3C2C3E004A65BBB08CEB3C43F313BE47D6053E5886CC3C138093BDE668FD3DC49C43BD624531BEF019E4BDE9911FBEE2E300BE4AF1DD3DB5012D3EE7C1163E16300ABED87FE13CFA7022BED44714BE7EB1A83D6896DB3C9AE804BE6F8FFABD3EB6E6BD42EABF3DDE03D83DE2FFB93D902C19BE0228A53DDC57133D2626C8BD2040303C072D19BEDAAF03BEFEDF953D"> : tensor<1x32x5xf32>}> : () -> tensor<1x32x5xf32>
+    %8 = tosa.reshape %arg0, %6 : (tensor<1x1x8x8xf32>, !tosa.shape<4>) -> tensor<1x8x8x1xf32>
+    %9 = tosa.conv2d %8, %5, %1, %2, %2 {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 1, 1>} : (tensor<1x8x8x1xf32>, tensor<2x3x3x1xf32>, tensor<2xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1x8x8x2xf32>
+    %10 = tosa.clamp %9 {max_val = 3.40282347E+38 : f32, min_val = 0.000000e+00 : f32} : (tensor<1x8x8x2xf32>) -> tensor<1x8x8x2xf32>
+    %11 = tosa.max_pool2d %10 {kernel = array<i64: 2, 2>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 2>} : (tensor<1x8x8x2xf32>) -> tensor<1x4x4x2xf32>
+    %12 = tosa.transpose %11 {perms = array<i32: 0, 3, 1, 2>} : (tensor<1x4x4x2xf32>) -> tensor<1x2x4x4xf32>
+    %13 = tosa.reshape %12, %3 : (tensor<1x2x4x4xf32>, !tosa.shape<3>) -> tensor<1x1x32xf32>
+    %14 = tosa.matmul %13, %7, %2, %2 : (tensor<1x1x32xf32>, tensor<1x32x5xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1x1x5xf32>
+    %15 = tosa.reshape %14, %4 : (tensor<1x1x5xf32>, !tosa.shape<2>) -> tensor<1x5xf32>
+    %16 = tosa.reshape %0, %4 : (tensor<5xf32>, !tosa.shape<2>) -> tensor<1x5xf32>
+    %17 = tosa.add %15, %16 : (tensor<1x5xf32>, tensor<1x5xf32>) -> tensor<1x5xf32>
+    return %17 : tensor<1x5xf32>
+  }
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      torch_tensor_5_torch.float32: "0x04000000586E06BE4E7FF03D9DBEB4BDC87CF23C792A043E",
+      torch_tensor_2_torch.float32: "0x04000000C0E5FE3B6CEC95BE"
+    }
+  }
+#-}
