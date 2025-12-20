@@ -277,17 +277,15 @@ struct ConvertTosaToNpuPass : npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPa
 
         // 【新增】处理 Target -> Source 的转换 
         // 这是修复 func.func 报错的关键：允许将新的 NpuTensor 转回旧的 tensor 给函数体使用
-        // converter.addSourceMaterialization([](OpBuilder& builder, Type resultType, ValueRange inputs, Location loc) -> Value {
-        //     return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs).getResult(0);
-        // });
+        converter.addSourceMaterialization([](OpBuilder& builder, Type resultType, ValueRange inputs, Location loc) -> Value {
+            return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs).getResult(0);
+        });
 
 
-        // 只有当函数的签名（Arguments/Results）符合 Converter 的规则时，FuncOp 才合法
-        // target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
-        //     return converter.isSignatureLegal(op.getFunctionType());
-        // });
+        target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+            return converter.isSignatureLegal(op.getFunctionType());
+        });
 
-        // 只有当 Return 的操作数类型符合 Converter 的规则时，ReturnOp 才合法
         target.addDynamicallyLegalOp<func::ReturnOp>([&](func::ReturnOp op) {
             return converter.isLegal(op.getOperandTypes());
         });

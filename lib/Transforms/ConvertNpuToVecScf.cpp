@@ -100,7 +100,9 @@ struct Conv2dOpPatNew : OpConversionPattern<npu::Conv2dOp> {
         Value c_dilationW = rewriter.create<arith::ConstantIndexOp>(loc, dilationW);
         Value c_padTop = rewriter.create<arith::ConstantIndexOp>(loc, padTop);
         Value c_padLeft = rewriter.create<arith::ConstantIndexOp>(loc, padLeft);
-        
+        Value H_in_dim = rewriter.create<arith::ConstantIndexOp>(loc, inputType.getDimSize(1));
+        Value W_in_dim = rewriter.create<arith::ConstantIndexOp>(loc, inputType.getDimSize(2));
+
         rewriter.create<scf::ParallelOp>(
             loc, lowerBounds, upperBounds, steps,
             [&](OpBuilder &builder, Location loc, ValueRange ivs) {
@@ -164,8 +166,6 @@ struct Conv2dOpPatNew : OpConversionPattern<npu::Conv2dOp> {
 
                                         // --- 边界检查 ---
                                         // 只需要检查 h_in 和 w_in 是否在 Input 的范围内
-                                        Value H_in_dim = b4.create<arith::ConstantIndexOp>(l4, inputType.getDimSize(1));
-                                        Value W_in_dim = b4.create<arith::ConstantIndexOp>(l4, inputType.getDimSize(2));
 
                                         Value h_ge_0 = b4.create<arith::CmpIOp>(l4, arith::CmpIPredicate::sge, h_in, b4.create<arith::ConstantIndexOp>(l4, 0));
                                         Value h_lt_H = b4.create<arith::CmpIOp>(l4, arith::CmpIPredicate::slt, h_in, H_in_dim);
@@ -922,10 +922,6 @@ struct ConvertNpuToVecScfPass : npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVe
                 [](Type t) {return !isa<npu::NpuTensorType>(t);});
         });
 
-        // 只有当 Return 的操作数类型符合 Converter 的规则时，ReturnOp 才合法
-        // target.addDynamicallyLegalOp<func::ReturnOp>([&](func::ReturnOp op) {
-        //     return converter.isLegal(op.getOperandTypes());
-        // });
         auto checkValid = [](Operation* f) {
             return llvm::all_of(f->getOperandTypes(), [](Type t) {return !isa<npu::NpuTensorType>(t);});
         };
