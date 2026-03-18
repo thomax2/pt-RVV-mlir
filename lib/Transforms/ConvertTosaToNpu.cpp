@@ -215,7 +215,11 @@ struct AddOpPat : OpConversionPattern<tosa::AddOp> {
         Value a = adaptor.getInput1();
         Value b = adaptor.getInput2();
 
-        rewriter.replaceOpWithNewOp<npu::AddOp>(op, a, b);
+        Type originalResultType = op.getType();
+        Type convertedType = getTypeConverter()->convertType(originalResultType);
+        if (!convertedType) return failure();
+
+        rewriter.replaceOpWithNewOp<npu::AddOp>(op, convertedType, a, b);
         return success();
     }
 };
@@ -245,7 +249,7 @@ struct ConvertTosaToNpuPass : npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPa
         ConversionTarget target(getContext());
         target.addLegalDialect<npu::NpuDialect>();
         target.addIllegalDialect<tosa::TosaDialect>();
-        // 允许转换框架生成的胶水代码（Cast Op）存在
+        // 允许转换框架生成的（Cast Op）存在
         target.addLegalOp<UnrealizedConversionCastOp>();
 
         TypeConverter converter;

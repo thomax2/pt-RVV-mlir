@@ -153,7 +153,7 @@ def MatmulOp : NpuOp<"matmul", [Pure]> {
   }];
 }
 
-def AddOp : NpuOp<"Add", [Pure, SameOperandsAndResultType]> {
+def AddOp : NpuOp<"Add", [Pure]> {
   let summary = "add operation";
   let arguments = (ins
     NpuTensor:$input1,
