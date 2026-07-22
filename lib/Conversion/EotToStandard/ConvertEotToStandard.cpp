@@ -14,8 +14,10 @@
 #include <cmath>
 #include <limits>
 
+namespace eot {
 #define GEN_PASS_DEF_CONVERTEOTTOSTANDARD
 #include "eot/EotPasses.h.inc"
+} // namespace eot
 
 using namespace mlir;
 

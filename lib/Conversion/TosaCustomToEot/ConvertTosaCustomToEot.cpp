@@ -11,8 +11,10 @@
 #include <cmath>
 #include <initializer_list>
 
+namespace eot {
 #define GEN_PASS_DEF_CONVERTTOSACUSTOMTOEOT
 #include "eot/EotPasses.h.inc"
+} // namespace eot
 
 using namespace mlir;
 

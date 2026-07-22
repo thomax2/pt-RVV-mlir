@@ -8,8 +8,10 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace npu {
 #define GEN_PASS_DEF_PLANSTATICWORKSPACE
 #include "npu/NpuPasses.h.inc"
+} // namespace npu
 
 using namespace mlir;
 
