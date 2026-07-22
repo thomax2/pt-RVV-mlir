@@ -16,6 +16,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
+option(NPU_SUPPRESS_MLIR_DEPRECATION_WARNINGS
+  "Suppress deprecated OpBuilder API warnings from the pinned MLIR revision"
+  ON)
+if(NPU_SUPPRESS_MLIR_DEPRECATION_WARNINGS)
+  if(MSVC)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/wd4996>)
+  else()
+    add_compile_options(
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>)
+  endif()
+endif()
+
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
