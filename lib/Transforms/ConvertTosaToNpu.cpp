@@ -239,8 +239,8 @@ struct ReturnOpPat : public OpConversionPattern<func::ReturnOp> {
   };
   
 
-struct ConvertTosaToNpuPass : npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPass> {
-    using npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPass>::ConvertTosaToNpuBase;
+struct ConvertTosaToNpuPass : ::npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPass> {
+    using ::npu::impl::ConvertTosaToNpuBase<ConvertTosaToNpuPass>::ConvertTosaToNpuBase;
     void getDependentDialects(DialectRegistry &registry) const final {
       registry.insert<NpuDialect>();
       registry.insert<func::FuncDialect>();

@@ -178,7 +178,7 @@ struct ConvertEotCustomPattern : OpConversionPattern<tosa::CustomOp> {
 };
 
 struct ConvertTosaCustomToEotPass
-    : eot::impl::ConvertTosaCustomToEotBase<ConvertTosaCustomToEotPass> {
+    : ::eot::impl::ConvertTosaCustomToEotBase<ConvertTosaCustomToEotPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<eot::EotDialect, tosa::TosaDialect>();
   }

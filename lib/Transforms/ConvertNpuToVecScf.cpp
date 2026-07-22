@@ -901,8 +901,8 @@ struct ReturnOpPatNew : public OpConversionPattern<func::ReturnOp> {
     }
 };  
 
-struct ConvertNpuToVecScfPass : npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass> {
-    using npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass>::ConvertNpuToVecScfBase;
+struct ConvertNpuToVecScfPass : ::npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass> {
+    using ::npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass>::ConvertNpuToVecScfBase;
     void getDependentDialects(DialectRegistry &registry) const final {
       registry.insert<NpuDialect>();
       registry.insert<func::FuncDialect>();

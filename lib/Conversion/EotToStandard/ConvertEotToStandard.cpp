@@ -617,7 +617,7 @@ struct GmParameterizeLowering
 };
 
 struct ConvertEotToStandardPass
-    : eot::impl::ConvertEotToStandardBase<ConvertEotToStandardPass> {
+    : ::eot::impl::ConvertEotToStandardBase<ConvertEotToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<arith::ArithDialect, func::FuncDialect,
                     linalg::LinalgDialect, math::MathDialect,

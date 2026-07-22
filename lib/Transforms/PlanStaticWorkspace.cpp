@@ -17,7 +17,7 @@ namespace {
 // Despite the compatibility command name, this pass operates only on Func and
 // MemRef IR and has no dependency on the legacy NPU dialect.
 struct PlanStaticWorkspacePass
-    : npu::impl::PlanStaticWorkspaceBase<PlanStaticWorkspacePass> {
+    : ::npu::impl::PlanStaticWorkspaceBase<PlanStaticWorkspacePass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<func::FuncDialect, memref::MemRefDialect>();
   }
