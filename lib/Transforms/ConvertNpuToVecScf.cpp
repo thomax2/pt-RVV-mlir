@@ -8,6 +8,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -20,7 +21,6 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -234,6 +234,7 @@ struct Conv2dOpPatNew : OpConversionPattern<npu::Conv2dOp> {
 
 struct ConstantOpPatNew : OpConversionPattern<npu::ConstantOp> {
     using OpConversionPattern<npu::ConstantOp>::OpConversionPattern;
+    mutable int64_t nextSymbolId = 0;
 
     LogicalResult matchAndRewrite(npu::ConstantOp op, OpAdaptor adaptor, ConversionPatternRewriter & rewriter) const override {        
         // 1. 获取原始属性
@@ -248,11 +249,12 @@ struct ConstantOpPatNew : OpConversionPattern<npu::ConstantOp> {
         }
         auto memrefType = cast<MemRefType>(convertedType);
 
-        // 3. 生成全局变量名
-        std::string globalName = "npu_const_" + std::to_string((uintptr_t)op.getOperation());
-
-        // 4. 找到 ModuleOp (全局变量必须插在 Module 里，不能插在 Func 里)
+        // 3. Generate a deterministic, collision-free symbol name.
         auto module = op->getParentOfType<ModuleOp>();
+        std::string globalName;
+        do {
+            globalName = "npu_const_" + std::to_string(nextSymbolId++);
+        } while (SymbolTable::lookupSymbolIn(module, globalName));
 
         // 使用 InsertionGuard 保存插入点，因为我们要跳到 Module Body 也就是函数外面去写代码
         {
@@ -288,6 +290,7 @@ struct ConstantOpPatNew : OpConversionPattern<npu::ConstantOp> {
 
 struct ConstantShapeOpPatNew : OpConversionPattern<npu::ConstantShapeOp> {
     using OpConversionPattern<npu::ConstantShapeOp>::OpConversionPattern;
+    mutable int64_t nextSymbolId = 0;
 
     LogicalResult matchAndRewrite(npu::ConstantShapeOp op, OpAdaptor adaptor, ConversionPatternRewriter & rewriter) const override {
         // 1. 获取原始属性
@@ -302,11 +305,12 @@ struct ConstantShapeOpPatNew : OpConversionPattern<npu::ConstantShapeOp> {
         }
         auto memrefType = cast<MemRefType>(convertedType);
 
-        // 3. 生成全局变量名
-        std::string globalName = "npu_const_shape_" + std::to_string((uintptr_t)op.getOperation());
-
-        // 4. 找到 ModuleOp (全局变量必须插在 Module 里，不能插在 Func 里)
+        // 3. Generate a deterministic, collision-free symbol name.
         auto module = op->getParentOfType<ModuleOp>();
+        std::string globalName;
+        do {
+            globalName = "npu_const_shape_" + std::to_string(nextSymbolId++);
+        } while (SymbolTable::lookupSymbolIn(module, globalName));
 
         // 使用 InsertionGuard 保存插入点，因为我们要跳到 Module Body 也就是函数外面去写代码
         {
@@ -897,44 +901,6 @@ struct ReturnOpPatNew : public OpConversionPattern<func::ReturnOp> {
     }
 };  
 
-struct FuncOpWorkspacePat : public OpConversionPattern<func::FuncOp> {
-    using OpConversionPattern<func::FuncOp>::OpConversionPattern;
-
-    LogicalResult matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const override {
-        auto funcType = op.getFunctionType();
-        SmallVector<Type> newInputs;
-        
-        // 1. 原本的 Input (转为 memref)
-        if (failed(getTypeConverter()->convertTypes(funcType.getInputs(), newInputs)))
-            return failure();
-
-        // 2. 原本的 Output (转为 memref，作为第 2 个参数 drm_ptr)
-        SmallVector<Type> newResults;
-        if (failed(getTypeConverter()->convertTypes(funcType.getResults(), newResults)))
-            return failure();
-        newInputs.append(newResults.begin(), newResults.end());
-
-        // 3. [新增] Workspace 内存池 (作为第 3 个参数 workspace_ptr)
-        // memref<?xf32> 表示大小动态的一维数组
-        Type workspaceType = MemRefType::get({ShapedType::kDynamic}, rewriter.getF32Type());
-        newInputs.push_back(workspaceType);
-
-        // 4. 更新签名
-        auto newFuncType = FunctionType::get(getContext(), newInputs, /*results=*/{});
-        rewriter.modifyOpInPlace(op, [&] {
-            op.setType(newFuncType);
-            Block &entryBlock = op.front();
-            // 添加 output 参数
-            for (Type resType : newResults) entryBlock.addArgument(resType, op.getLoc());
-            // 添加 workspace 参数
-            entryBlock.addArgument(workspaceType, op.getLoc());
-        });
-
-        return success();
-    }
-};
-
 struct ConvertNpuToVecScfPass : npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass> {
     using npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVecScfPass>::ConvertNpuToVecScfBase;
     void getDependentDialects(DialectRegistry &registry) const final {
@@ -943,7 +909,6 @@ struct ConvertNpuToVecScfPass : npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVe
       registry.insert<scf::SCFDialect>();
       registry.insert<memref::MemRefDialect>();
       registry.insert<arith::ArithDialect>();
-      registry.insert<vector::VectorDialect>();
     }
 
     void runOnOperation() final {
@@ -991,108 +956,6 @@ struct ConvertNpuToVecScfPass : npu::impl::ConvertNpuToVecScfBase<ConvertNpuToVe
             return;
         }
 
-        // ==========================================
-        // 2. 内存池规划与函数签名修改 (Memory Planning & DPS)
-        // ==========================================
-        Operation *module = getOperation();
-        OpBuilder builder(&getContext());
-
-        // 步骤 A: 绕开转换框架，安全修改 FuncOp 签名与 Return
-        module->walk([&](func::FuncOp funcOp) {
-            auto funcType = funcOp.getFunctionType();
-            auto results = funcType.getResults();
-            if (results.empty()) return; // 说明没有返回值，已经转换过了
-
-            // 构建新参数列表：(原输入..., 原输出..., Workspace)
-            auto inputs = funcType.getInputs();
-            SmallVector<Type> newInputs(inputs.begin(), inputs.end());
-            newInputs.append(results.begin(), results.end());
-            Type workspaceType = MemRefType::get({ShapedType::kDynamic}, builder.getF32Type());
-            newInputs.push_back(workspaceType);
-
-            // 强制设置新签名
-            funcOp.setType(FunctionType::get(&getContext(), newInputs, {}));
-
-            // 为 Entry Block 手动追加新参数
-            Block &entryBlock = funcOp.front();
-            for (Type resType : results) entryBlock.addArgument(resType, funcOp.getLoc());
-            entryBlock.addArgument(workspaceType, funcOp.getLoc());
-
-            // 替换 ReturnOp 为 CopyOp + 空 ReturnOp
-            funcOp.walk([&](func::ReturnOp retOp) {
-                builder.setInsertionPoint(retOp);
-                auto operands = retOp.getOperands();
-                unsigned outArgStartIdx = inputs.size(); // 刚好是旧输入的末尾位置
-
-                for (unsigned i = 0; i < operands.size(); ++i) {
-                    builder.create<memref::CopyOp>(retOp.getLoc(), operands[i], entryBlock.getArgument(outArgStartIdx + i));
-                }
-                builder.create<func::ReturnOp>(retOp.getLoc());
-                retOp.erase();
-            });
-        });
-
-        // 步骤 B: 扫描并替换所有的 alloc 为 workspace 的 reinterpret_cast
-        module->walk([&](func::FuncOp funcOp) {
-            if (funcOp.getNumArguments() < 3) return; 
-            
-            Value workspaceVal = funcOp.getArgument(funcOp.getNumArguments() - 1);
-            int64_t currentOffset = 0;
-
-            // 先收集所有的 allocOp，避免边遍历边删除导致迭代器失效崩溃
-            SmallVector<memref::AllocOp> allocOps;
-            funcOp.walk([&](memref::AllocOp allocOp) { allocOps.push_back(allocOp); });
-
-            for (auto allocOp : allocOps) {
-                auto memrefType = cast<MemRefType>(allocOp.getType());
-                builder.setInsertionPoint(allocOp);
-                auto loc = allocOp.getLoc();
-
-                // 计算占用元素数
-                int64_t elementCount = 1;
-                for (int64_t dim : memrefType.getShape()) elementCount *= dim;
-
-                OpFoldResult offset = builder.getIndexAttr(currentOffset);
-                SmallVector<OpFoldResult> sizes;
-                for(int64_t dim : memrefType.getShape()) sizes.push_back(builder.getIndexAttr(dim));
-                
-                SmallVector<OpFoldResult> strides;
-                int64_t currentStride = 1;
-                SmallVector<int64_t> tmpStride(memrefType.getRank());
-                for(int i = memrefType.getRank() - 1; i >=0; i--) {
-                    tmpStride[i] = currentStride;
-                    currentStride *= memrefType.getShape()[i];
-                }
-                for(int64_t stride : tmpStride) strides.push_back(builder.getIndexAttr(stride));
-
-                // ---------- 替换为这段新代码： ----------
-                // 1. 构建真实的内存步长与偏移量布局 (Strided Layout)
-                auto layoutAttr = StridedLayoutAttr::get(&getContext(), currentOffset, tmpStride);
-                
-                // 2. 创建一个带有正确偏移量信息的新 MemRefType
-                auto stridedMemRefType = MemRefType::get(
-                    memrefType.getShape(), 
-                    memrefType.getElementType(), 
-                    layoutAttr, 
-                    memrefType.getMemorySpace()
-                );
-
-                // 3. 创建强转算子
-                auto castOp = builder.create<memref::ReinterpretCastOp>(
-                    loc, stridedMemRefType, workspaceVal, offset, sizes, strides
-                );
-
-                allocOp.replaceAllUsesWith(castOp.getResult());
-                allocOp.erase();
-                
-                // 累加 offset，并对齐到 4 的倍数 (16 字节对齐，防止硬件取存报错)
-                currentOffset += elementCount;
-                if (currentOffset % 4 != 0) currentOffset += (4 - (currentOffset % 4));
-            }
-            
-            llvm::outs() << "[Memory Planner] Workspace Elements Required: " 
-                         << currentOffset << " (bytes: " << currentOffset * 4 << ")\n";
-        });
     }
 };
 

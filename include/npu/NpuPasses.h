@@ -15,6 +15,7 @@ namespace npu {
 // 在写 create 函数表
 std::unique_ptr<mlir::Pass> createConvertTosaToNpuPass(ConvertTosaToNpuOptions options={});
 std::unique_ptr<mlir::Pass> createConvertNpuToVecScfPass(ConvertNpuToVecScfOptions options={});
+std::unique_ptr<mlir::Pass> createPlanStaticWorkspacePass();
 
 
 // 生成注册函数

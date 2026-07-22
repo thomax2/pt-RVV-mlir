@@ -124,18 +124,20 @@ struct ClampOpPat : OpConversionPattern<tosa::ClampOp> {
         Attribute minAttr = op.getMinValAttr();
         Attribute maxAttr = op.getMaxValAttr();
 
-        auto extractValue = [](Attribute attr) -> float {
+        auto extractValue = [](Attribute attr) -> std::optional<float> {
             if(auto floatAttr = dyn_cast<FloatAttr>(attr)) {
-                return (float)floatAttr.getValueAsDouble();
+                return static_cast<float>(floatAttr.getValueAsDouble());
             }
             if(auto intAttr = dyn_cast<IntegerAttr>(attr)) {
-                return (float)intAttr.getInt();
+                return static_cast<float>(intAttr.getInt());
             }
-            llvm_unreachable("Unsupported attribute type for min/max value");
+            return std::nullopt;
         };
 
-        float min = extractValue(minAttr);
-        float max = extractValue(maxAttr);
+        std::optional<float> min = extractValue(minAttr);
+        std::optional<float> max = extractValue(maxAttr);
+        if (!min || !max)
+            return rewriter.notifyMatchFailure(op, "unsupported clamp bound attribute type");
 
         Type convertedType = getTypeConverter()->convertType(op.getType());
         if (!convertedType) return failure();
@@ -144,7 +146,7 @@ struct ClampOpPat : OpConversionPattern<tosa::ClampOp> {
             op,
             convertedType,
             input,
-            rewriter.getF32FloatAttr(min), rewriter.getF32FloatAttr(max)
+            rewriter.getF32FloatAttr(*min), rewriter.getF32FloatAttr(*max)
         );
         return success();
     }

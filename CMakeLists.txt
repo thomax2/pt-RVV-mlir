@@ -1,7 +1,26 @@
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  cmake_minimum_required(VERSION 3.20)
+  project(NpuMLIR LANGUAGES C CXX)
+
+  find_package(MLIR REQUIRED CONFIG)
+  message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+  list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+  include(TableGen)
+  include(AddLLVM)
+  include(AddMLIR)
+
+  include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
+  add_definitions(${LLVM_DEFINITIONS})
+  set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 add_subdirectory(include/npu)
+add_subdirectory(include/eot)
 add_subdirectory(lib)
 add_subdirectory(tools/npu-opt)
