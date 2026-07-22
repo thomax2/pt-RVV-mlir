@@ -3,8 +3,13 @@ set -euo pipefail
 
 repo_dir=$(cd "$(dirname "$0")/.." && pwd)
 project_build=${PROJECT_BUILD:-${BUILD_DIR:-build}}
-npu_opt=${NPU_OPT:-${project_build}/bin/npu-opt}
-filecheck=${FILECHECK:-${project_build}/bin/FileCheck}
+npu_opt=${NPU_OPT:-${project_build}/npu-opt}
+if [[ -n "${FILECHECK:-}" ]]; then
+  filecheck=${FILECHECK}
+else
+  mlir_build=${MLIR_BUILD:?set MLIR_BUILD or FILECHECK}
+  filecheck=${mlir_build}/bin/FileCheck
+fi
 
 for test in "${repo_dir}"/test/Eot/*-parse.mlir; do
   "${npu_opt}" "${test}" | "${filecheck}" "${test}"
