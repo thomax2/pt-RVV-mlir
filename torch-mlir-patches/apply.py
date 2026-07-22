@@ -30,15 +30,21 @@ def main() -> None:
             raise RuntimeError("matching TorchToTosa include anchor was not found")
         cpp_text = cpp_text.replace(anchor, anchor + include_line, 1)
 
-    call = "    populateTorchEotCustomToTosaPatterns(typeConverter, patterns, target);\n"
-    if call not in cpp_text:
+    call_text = "populateTorchEotCustomToTosaPatterns(typeConverter, patterns, target);"
+    if call_text not in cpp_text:
         pattern = re.compile(
-            r"(\s*auto allConvertibleOps\s*=\s*"
+            r"^(?P<indent>[ \t]*)auto\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*"
             r"populateTorchToTosaConversionPatternsAndIllegalOps\("
-            r"\s*typeConverter,\s*patterns\s*\);\n)")
+            r"\s*typeConverter\s*,\s*patterns\s*\)\s*;[ \t]*$",
+            re.MULTILINE)
         match = pattern.search(cpp_text)
         if not match:
-            raise RuntimeError("matching Torch-to-TOSA pattern population anchor was not found")
+            raise RuntimeError(
+                "matching Torch-to-TOSA pattern population anchor was not "
+                "found; expected `auto <name> = "
+                "populateTorchToTosaConversionPatternsAndIllegalOps("
+                "typeConverter, patterns);`")
+        call = f"\n{match.group('indent')}{call_text}"
         cpp_text = cpp_text[:match.end()] + call + cpp_text[match.end():]
 
     if "TorchEotCustomToTosa.cpp" not in cmake_text:
