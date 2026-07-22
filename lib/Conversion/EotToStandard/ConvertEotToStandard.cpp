@@ -228,7 +228,8 @@ static Value divideByCount(ConversionPatternRewriter &rewriter, Location loc,
         Value one = constantF32(bld, bodyLoc, 1.0);
         Value denom = bld.create<arith::MaximumFOp>(bodyLoc, args[1], one);
         bld.create<linalg::YieldOp>(
-            bodyLoc, bld.create<arith::DivFOp>(bodyLoc, args[0], denom));
+            bodyLoc,
+            bld.create<arith::DivFOp>(bodyLoc, args[0], denom).getResult());
       });
 }
 
@@ -324,7 +325,8 @@ static Value lowerMatmulProjection(ConversionPatternRewriter &rewriter,
       [&](OpBuilder &bld, Location bodyLoc, ValueRange args) {
         Value mul = bld.create<arith::MulFOp>(bodyLoc, args[0], args[1]);
         bld.create<linalg::YieldOp>(
-            bodyLoc, bld.create<arith::AddFOp>(bodyLoc, args[2], mul));
+            bodyLoc,
+            bld.create<arith::AddFOp>(bodyLoc, args[2], mul).getResult());
       });
 }
 
@@ -496,7 +498,8 @@ struct GmParameterizeLowering
         [&](OpBuilder &bld, Location bodyLoc, ValueRange a) {
           Value shifted = bld.create<arith::SubFOp>(bodyLoc, a[0], a[1]);
           bld.create<linalg::YieldOp>(
-              bodyLoc, bld.create<math::ExpOp>(bodyLoc, shifted));
+              bodyLoc,
+              bld.create<math::ExpOp>(bodyLoc, shifted).getResult());
         });
     Value expSum = reduceRows(rewriter, loc, expLogits, oneType, 0.0, false);
     Value pi = elementwise(
@@ -504,7 +507,8 @@ struct GmParameterizeLowering
         ArrayRef<AffineMap>{identity, broadcast},
         [&](OpBuilder &bld, Location bodyLoc, ValueRange a) {
           bld.create<linalg::YieldOp>(
-              bodyLoc, bld.create<arith::DivFOp>(bodyLoc, a[0], a[1]));
+              bodyLoc,
+              bld.create<arith::DivFOp>(bodyLoc, a[0], a[1]).getResult());
         });
     Value tau = elementwise(
         ValueRange{adaptor.getTauLogits(), adaptor.getQN()}, oneType, oneDims,
@@ -530,7 +534,8 @@ struct GmParameterizeLowering
                   bodyLoc,
                   constantF32(bld, bodyLoc,
                               op.getTauMinAttr().getValueAsDouble()),
-                  scaled));
+                  scaled)
+                  .getResult());
         });
     Value alphaPi = elementwise(
         ValueRange{pi, tau}, piType, piDims,
@@ -588,7 +593,7 @@ struct GmParameterizeLowering
         ValueRange{cLogvar}, cType, cDims, ArrayRef<AffineMap>{identity},
         [&](OpBuilder &bld, Location bodyLoc, ValueRange a) {
           bld.create<linalg::YieldOp>(
-              bodyLoc, bld.create<math::ExpOp>(bodyLoc, a[0]));
+              bodyLoc, bld.create<math::ExpOp>(bodyLoc, a[0]).getResult());
         });
     Value qC = elementwise(
         ValueRange{cVar}, cType, cDims, ArrayRef<AffineMap>{identity},
@@ -598,7 +603,8 @@ struct GmParameterizeLowering
               bodyLoc,
               bld.create<arith::DivFOp>(
                   bodyLoc, one,
-                  bld.create<arith::AddFOp>(bodyLoc, one, a[0])));
+                  bld.create<arith::AddFOp>(bodyLoc, one, a[0]))
+                  .getResult());
         });
     auto castToResult = [&](Value value, Value declaredResult) -> Value {
       if (value.getType() == declaredResult.getType())
