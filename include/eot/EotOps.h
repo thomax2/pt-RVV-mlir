@@ -2,6 +2,7 @@
 #define EOT_EOTOPS_H
 #include "eot/EotDialect.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #define GET_OP_CLASSES

@@ -2,6 +2,7 @@
 #include "eot/EotPasses.h"
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/StringMap.h"
@@ -73,7 +74,7 @@ static LogicalResult rejectUnknownFields(tosa::CustomOp op,
   for (const auto &entry : object)
     if (!names.count(entry.first))
       return op.emitOpError() << "unknown implementation_attrs field '"
-                              << entry.first << "'";
+                              << entry.first.str() << "'";
   return success();
 }
 
