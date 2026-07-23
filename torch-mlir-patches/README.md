@@ -29,7 +29,7 @@ legal. The EOT rewrite consumes and erases them; unrelated Torch float
 constants remain illegal. The bridge registration call remains after the
 standard illegal-operation loop.
 
-The source accepts the importer spellings `eot::name`, `eot.name`, and
-`eot.name.default`, emits sorted deterministic JSON, supports the nine-result
-`gm_parameterize`, and marks unknown `eot` operators illegal while leaving
-other custom domains untouched.
+The source accepts the importer spellings `torch.eot.name`, `eot::name`,
+`eot.name`, and their `.default` variants, emits sorted deterministic JSON,
+supports the nine-result `gm_parameterize`, and marks unknown `eot` operators
+illegal while leaving other custom domains untouched.

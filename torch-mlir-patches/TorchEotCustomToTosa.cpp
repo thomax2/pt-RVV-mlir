@@ -18,7 +18,13 @@ using namespace mlir::torch::Torch;
 namespace {
 
 static StringRef canonicalEotName(StringRef name) {
-  if (name.consume_front("eot::") || name.consume_front("eot.")) {
+  // FXImporter prefixes custom operator names with "torch." in this
+  // torch-mlir revision, producing names such as
+  // "torch.eot.point_features". Keep accepting the unprefixed spellings for
+  // compatibility with other importer revisions and hand-written tests.
+  if (name.consume_front("torch.eot.") ||
+      name.consume_front("torch.eot::") ||
+      name.consume_front("eot::") || name.consume_front("eot.")) {
     name.consume_back(".default");
     return name;
   }
