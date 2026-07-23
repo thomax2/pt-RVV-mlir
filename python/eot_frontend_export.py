@@ -23,10 +23,17 @@ def _tosa_layer_norm(value: Tensor, layer: nn.LayerNorm) -> Tensor:
     return normalized
 
 
+def _tosa_silu(value: Tensor) -> Tensor:
+    """SiLU decomposed to TOSA-covered elementwise operations."""
+    return value * torch.sigmoid(value)
+
+
 def _run_tosa_sequential(sequence: nn.Sequential, value: Tensor) -> Tensor:
     for layer in sequence:
         if isinstance(layer, nn.LayerNorm):
             value = _tosa_layer_norm(value, layer)
+        elif isinstance(layer, nn.SiLU):
+            value = _tosa_silu(value)
         else:
             value = layer(value)
     return value
@@ -65,12 +72,12 @@ class EotFrontendExportModule(nn.Module):
         feat_max = eot.masked_max(feat, mask, -1e9)
         feat_mean = eot.masked_mean(feat, mask)
         feat_var = eot.masked_variance(feat, mask)
-        feat_std = torch.sqrt(feat_var.clamp_min(1e-8))
+        feat_std = torch.sqrt(torch.clamp(feat_var, min=1e-8))
         parts = [feat_max, feat_mean, feat_std]
         if self.cfg.use_raw_stats:
             z_mean = eot.masked_mean(points, mask)
             z_var = eot.masked_variance(points, mask)
-            z_std = torch.sqrt(z_var.clamp_min(1e-8))
+            z_std = torch.sqrt(torch.clamp(z_var, min=1e-8))
             z_max = eot.masked_max(points, mask, -1e9)
             z_min = eot.masked_min(points, mask, 1e9)
             z_absmax = torch.maximum(z_max.abs(), z_min.abs())
@@ -78,7 +85,7 @@ class EotFrontendExportModule(nn.Module):
         point_feat = torch.cat(parts, 1)
         torch._assert(point_feat.shape[1] == self.cfg.front_point_dim,
                       "unexpected point feature width")
-        count = mask.sum(1).to(torch.float32).clamp_min(1.0)
+        count = torch.clamp(mask.sum(1).to(torch.float32), min=1.0)
         qN = (torch.log1p(count) / math.log1p(float(self.cfg.n_ref))).clamp(0, 1).unsqueeze(1)
         pi_feat = _run_tosa_sequential(
             self.pi_encoder, torch.cat((point_feat, sensor_view, qN), 1))
