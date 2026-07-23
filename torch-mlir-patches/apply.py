@@ -31,21 +31,49 @@ def main() -> None:
         cpp_text = cpp_text.replace(anchor, anchor + include_line, 1)
 
     call_text = "populateTorchEotCustomToTosaPatterns(typeConverter, patterns, target);"
-    if call_text not in cpp_text:
-        pattern = re.compile(
-            r"^(?P<indent>[ \t]*)auto\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*"
-            r"populateTorchToTosaConversionPatternsAndIllegalOps\("
-            r"\s*typeConverter\s*,\s*patterns\s*\)\s*;[ \t]*$",
-            re.MULTILINE)
-        match = pattern.search(cpp_text)
-        if not match:
-            raise RuntimeError(
-                "matching Torch-to-TOSA pattern population anchor was not "
-                "found; expected `auto <name> = "
-                "populateTorchToTosaConversionPatternsAndIllegalOps("
-                "typeConverter, patterns);`")
-        call = f"\n{match.group('indent')}{call_text}"
-        cpp_text = cpp_text[:match.end()] + call + cpp_text[match.end():]
+    # Always relocate an existing call as older versions of this applicator
+    # inserted it before the standard illegal-op loop. That loop can overwrite
+    # the EOT bridge's dynamic legality for Torch scalar attribute constants.
+    cpp_text = re.sub(
+        rf"^[ \t]*{re.escape(call_text)}[ \t]*(?:\r?\n)?",
+        "", cpp_text, flags=re.MULTILINE)
+    pattern = re.compile(
+        r"^(?P<indent>[ \t]*)auto\s+(?P<illegal_var>[A-Za-z_][A-Za-z0-9_]*)"
+        r"\s*=\s*populateTorchToTosaConversionPatternsAndIllegalOps\("
+        r"\s*typeConverter\s*,\s*patterns\s*\)\s*;[ \t]*$",
+        re.MULTILINE)
+    match = pattern.search(cpp_text)
+    if not match:
+        raise RuntimeError(
+            "matching Torch-to-TOSA pattern population anchor was not "
+            "found; expected `auto <name> = "
+            "populateTorchToTosaConversionPatternsAndIllegalOps("
+            "typeConverter, patterns);`")
+
+    illegal_var = re.escape(match.group("illegal_var"))
+    loop_pattern = re.compile(
+        rf"^(?P<indent>[ \t]*)for\s*\(\s*auto\s+"
+        rf"[A-Za-z_][A-Za-z0-9_]*\s*:\s*{illegal_var}\s*\)\s*\{{",
+        re.MULTILINE)
+    loop_match = loop_pattern.search(cpp_text, match.end())
+    if not loop_match:
+        raise RuntimeError(
+            "matching Torch-to-TOSA illegal-op registration loop was not found")
+    depth = 0
+    loop_end = None
+    for index in range(loop_match.end() - 1, len(cpp_text)):
+        if cpp_text[index] == "{":
+            depth += 1
+        elif cpp_text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                loop_end = index + 1
+                break
+    if loop_end is None:
+        raise RuntimeError(
+            "Torch-to-TOSA illegal-op registration loop was not balanced")
+    call = f"\n{loop_match.group('indent')}{call_text}"
+    cpp_text = cpp_text[:loop_end] + call + cpp_text[loop_end:]
 
     if "TorchEotCustomToTosa.cpp" not in cmake_text:
         match = re.search(r"^(\s*)TorchToTosa\.cpp\s*$", cmake_text, re.MULTILINE)

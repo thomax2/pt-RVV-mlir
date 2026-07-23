@@ -58,6 +58,26 @@ static const llvm::StringMap<Spec> &getSpecs() {
   return specs;
 }
 
+static bool isEotAttributeConstant(ConstantFloatOp constant) {
+  bool hasUse = false;
+  for (Value result : constant->getResults()) {
+    for (OpOperand &use : result.getUses()) {
+      hasUse = true;
+      auto user = dyn_cast<OperatorOp>(use.getOwner());
+      if (!user)
+        return false;
+      StringRef name = canonicalEotName(user.getName());
+      auto specIt = getSpecs().find(name);
+      if (specIt == getSpecs().end() ||
+          use.getOperandNumber() < specIt->second.tensorInputs ||
+          use.getOperandNumber() >=
+              specIt->second.tensorInputs + specIt->second.scalarInputs)
+        return false;
+    }
+  }
+  return hasUse;
+}
+
 static FailureOr<std::string>
 encodeAttrs(OperatorOp op, StringRef name,
             ConversionPatternRewriter &rewriter) {
@@ -179,5 +199,12 @@ void mlir::torch::populateTorchEotCustomToTosaPatterns(
   target.addDynamicallyLegalOp<OperatorOp>([](OperatorOp op) {
     return canonicalEotName(op.getName()).empty();
   });
+  // The generic Torch-to-TOSA conversion has no lowering for bare Torch
+  // scalar constants. EOT custom operators use them only as compile-time
+  // attributes, so allow conversion to visit the EOT operator first. Its
+  // rewrite encodes the values into implementation_attrs and erases the
+  // constants once their final EOT user has been replaced.
+  target.addDynamicallyLegalOp<ConstantFloatOp>(
+      [](ConstantFloatOp op) { return isEotAttributeConstant(op); });
   patterns.add<ConvertTorchEotOperator>(typeConverter, patterns.getContext());
 }
