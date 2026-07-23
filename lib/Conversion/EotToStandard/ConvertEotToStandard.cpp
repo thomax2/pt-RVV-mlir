@@ -13,6 +13,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <cassert>
 #include <cmath>
 #include <limits>
 
@@ -330,6 +331,42 @@ static Value lowerMatmulProjection(ConversionPatternRewriter &rewriter,
       });
 }
 
+static Value extractGruGate(ConversionPatternRewriter &rewriter, Location loc,
+                            Value source, int64_t gate, int64_t width) {
+  auto sourceType = cast<RankedTensorType>(source.getType());
+  int64_t rank = sourceType.getRank();
+  assert((rank == 1 || rank == 2) && "expected rank-1 or rank-2 GRU value");
+
+  SmallVector<int64_t> sliceShape(sourceType.getShape());
+  sliceShape.back() = width;
+  auto sliceType =
+      RankedTensorType::get(sliceShape, sourceType.getElementType());
+  SmallVector<OpFoldResult> offsets;
+  SmallVector<OpFoldResult> sizes;
+  SmallVector<OpFoldResult> strides;
+  offsets.reserve(rank);
+  sizes.reserve(rank);
+  strides.reserve(rank);
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    bool gateDimension = dim == rank - 1;
+    offsets.push_back(
+        rewriter.getIndexAttr(gateDimension ? gate * width : 0));
+    if (gateDimension) {
+      sizes.push_back(rewriter.getIndexAttr(width));
+    } else if (sourceType.isDynamicDim(dim)) {
+      sizes.push_back(
+          rewriter.create<tensor::DimOp>(loc, source, dim).getResult());
+    } else {
+      sizes.push_back(rewriter.getIndexAttr(sourceType.getDimSize(dim)));
+    }
+    strides.push_back(rewriter.getIndexAttr(1));
+  }
+  return rewriter
+      .create<tensor::ExtractSliceOp>(loc, sliceType, source, offsets, sizes,
+                                      strides)
+      .getResult();
+}
+
 struct GruCellLowering : OpConversionPattern<eot::GruCellOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult
@@ -344,6 +381,18 @@ struct GruCellLowering : OpConversionPattern<eot::GruCellOp> {
         rewriter, loc, adaptor.getX(), adaptor.getWeightIh(), 3 * h);
     Value hProjection = lowerMatmulProjection(
         rewriter, loc, adaptor.getHPrev(), adaptor.getWeightHh(), 3 * h);
+    SmallVector<Value, 3> xGates;
+    SmallVector<Value, 3> hGates;
+    SmallVector<Value, 3> biasIGates;
+    SmallVector<Value, 3> biasHGates;
+    for (int64_t gate = 0; gate < 3; ++gate) {
+      xGates.push_back(extractGruGate(rewriter, loc, xProjection, gate, h));
+      hGates.push_back(extractGruGate(rewriter, loc, hProjection, gate, h));
+      biasIGates.push_back(
+          extractGruGate(rewriter, loc, adaptor.getBiasIh(), gate, h));
+      biasHGates.push_back(
+          extractGruGate(rewriter, loc, adaptor.getBiasHh(), gate, h));
+    }
     auto resultType = cast<RankedTensorType>(op.getHNext().getType());
     SmallVector<Value> dims;
     if (ShapedType::isDynamic(resultType.getDimSize(0)))
@@ -354,32 +403,20 @@ struct GruCellLowering : OpConversionPattern<eot::GruCellOp> {
     MLIRContext *ctx = rewriter.getContext();
     AffineExpr b, d;
     bindDims(ctx, b, d);
-    AffineExpr hOffset = getAffineConstantExpr(h, ctx);
-    AffineExpr nOffset = getAffineConstantExpr(2 * h, ctx);
-    SmallVector<AffineMap> maps = {
-        AffineMap::get(2, 0, {b, d}, ctx),
-        AffineMap::get(2, 0, {b, d + hOffset}, ctx),
-        AffineMap::get(2, 0, {b, d + nOffset}, ctx),
-        AffineMap::get(2, 0, {b, d}, ctx),
-        AffineMap::get(2, 0, {b, d + hOffset}, ctx),
-        AffineMap::get(2, 0, {b, d + nOffset}, ctx),
-        AffineMap::get(2, 0, {d}, ctx),
-        AffineMap::get(2, 0, {d + hOffset}, ctx),
-        AffineMap::get(2, 0, {d + nOffset}, ctx),
-        AffineMap::get(2, 0, {d}, ctx),
-        AffineMap::get(2, 0, {d + hOffset}, ctx),
-        AffineMap::get(2, 0, {d + nOffset}, ctx),
-        AffineMap::get(2, 0, {b, d}, ctx),
-        AffineMap::get(2, 0, {b, d}, ctx)};
+    AffineMap matrixIdentity = AffineMap::get(2, 0, {b, d}, ctx);
+    AffineMap vectorIdentity = AffineMap::get(2, 0, {d}, ctx);
+    SmallVector<AffineMap> maps(6, matrixIdentity);
+    maps.append(6, vectorIdentity);
+    maps.push_back(matrixIdentity);
+    maps.push_back(matrixIdentity);
     SmallVector<utils::IteratorType> iterators(2,
                                                utils::IteratorType::parallel);
     Value result = createGeneric(
         rewriter, loc,
-        ValueRange{xProjection, xProjection, xProjection, hProjection,
-                   hProjection, hProjection, adaptor.getBiasIh(),
-                   adaptor.getBiasIh(), adaptor.getBiasIh(),
-                   adaptor.getBiasHh(), adaptor.getBiasHh(),
-                   adaptor.getBiasHh(), adaptor.getHPrev()},
+        ValueRange{xGates[0], xGates[1], xGates[2], hGates[0], hGates[1],
+                   hGates[2], biasIGates[0], biasIGates[1], biasIGates[2],
+                   biasHGates[0], biasHGates[1], biasHGates[2],
+                   adaptor.getHPrev()},
         output, maps, iterators,
         [&](OpBuilder &bld, Location bodyLoc, ValueRange a) {
           auto sigmoid = [&](Value value) -> Value {
