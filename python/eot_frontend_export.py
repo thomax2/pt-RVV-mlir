@@ -85,7 +85,8 @@ class EotFrontendExportModule(nn.Module):
         point_feat = torch.cat(parts, 1)
         torch._assert(point_feat.shape[1] == self.cfg.front_point_dim,
                       "unexpected point feature width")
-        count = torch.clamp(mask.sum(1).to(torch.float32), min=1.0)
+        count = torch.clamp(
+            torch.sum(mask, dim=1, dtype=torch.float32), min=1.0)
         qN = (torch.log1p(count) / math.log1p(float(self.cfg.n_ref))).clamp(0, 1).unsqueeze(1)
         pi_feat = _run_tosa_sequential(
             self.pi_encoder, torch.cat((point_feat, sensor_view, qN), 1))
