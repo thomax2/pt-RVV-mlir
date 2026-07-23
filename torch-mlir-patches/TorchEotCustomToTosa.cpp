@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "torch-mlir/Dialect/Torch/Utils/Utils.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -144,6 +145,15 @@ struct ConvertTorchEotOperator : OpConversionPattern<OperatorOp> {
     if (failed(implementationAttrs))
       return failure();
 
+    // Scalar operands are folded into implementation_attrs below. Keep track
+    // of their defining constants so conversion does not leave dead illegal
+    // Torch scalar operations behind. A constant shared with another user is
+    // intentionally preserved.
+    llvm::SmallPtrSet<Operation *, 8> scalarConstants;
+    for (Value value : op.getOperands().drop_front(spec.tensorInputs))
+      if (auto constant = value.getDefiningOp<ConstantFloatOp>())
+        scalarConstants.insert(constant.getOperation());
+
     OperationState state(op.getLoc(), tosa::CustomOp::getOperationName());
     state.addOperands(tensorOperands);
     state.addTypes(resultTypes);
@@ -153,6 +163,10 @@ struct ConvertTorchEotOperator : OpConversionPattern<OperatorOp> {
                        rewriter.getStringAttr(*implementationAttrs));
     Operation *custom = rewriter.create(state);
     rewriter.replaceOp(op, custom->getResults());
+    for (Operation *constant : scalarConstants)
+      if (llvm::all_of(constant->getResults(),
+                       [](Value result) { return result.use_empty(); }))
+        rewriter.eraseOp(constant);
     return success();
   }
 };
