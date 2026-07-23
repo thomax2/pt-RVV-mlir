@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 import torch
 from torch import Tensor
@@ -131,15 +130,13 @@ def _gru_cell_fake(x: Tensor, h_prev: Tensor, weight_ih: Tensor,
     return h_prev.new_empty(h_prev.shape)
 
 
-GmOutputs = Tuple[Tensor, Tensor, Tensor, Tensor, Tensor,
-                  Tensor, Tensor, Tensor, Tensor]
-
-
 @torch.library.custom_op("eot::gm_parameterize", mutates_args=())
 def gm_parameterize(pi_logits: Tensor, tau_logits: Tensor, c_xi: Tensor,
                     raw_logvar: Tensor, qN: Tensor, c_min: float, c_max: float,
                     tau_min: float, tau_max: float, alpha_base: float,
-                    logvar_min: float, logvar_max: float) -> GmOutputs:
+                    logvar_min: float, logvar_max: float
+                    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor,
+                               Tensor, Tensor, Tensor, Tensor]:
     _require(pi_logits.ndim == 2 and pi_logits.shape[1] == 4,
              "pi_logits must have shape [B,4]")
     _require(tau_logits.ndim == 2 and tau_logits.shape[1] == 1,
@@ -169,7 +166,9 @@ def _gm_parameterize_fake(pi_logits: Tensor, tau_logits: Tensor, c_xi: Tensor,
                           raw_logvar: Tensor, qN: Tensor, c_min: float,
                           c_max: float, tau_min: float, tau_max: float,
                           alpha_base: float, logvar_min: float,
-                          logvar_max: float) -> GmOutputs:
+                          logvar_max: float
+                          ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor,
+                                     Tensor, Tensor, Tensor, Tensor]:
     batch = pi_logits.shape[0]
     return (pi_logits.new_empty((batch, 4)), pi_logits.new_empty((batch, 1)),
             pi_logits.new_empty((batch, 4)), pi_logits.new_empty((batch, 1)),
