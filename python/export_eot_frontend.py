@@ -108,7 +108,7 @@ def _import_raw_torch_mlir(
         exported_program,
         output_type=OutputType.RAW,
         func_name="gm_frontend",
-        enable_graph_printing=True,
+        enable_graph_printing=False,
     )
     version = getattr(torch_mlir, "__version__", "unknown")
     return str(module), str(version)

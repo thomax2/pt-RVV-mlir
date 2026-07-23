@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import torch
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+# torch.export.load resolves custom operator targets through the dispatcher.
+# Register the EOT schemas before deserializing the exported program.
+from python import eot_export_ops as _eot_export_ops  # noqa: E402,F401
 
 REQUIRED = (
     "point_features", "masked_mean", "masked_variance", "masked_max",
