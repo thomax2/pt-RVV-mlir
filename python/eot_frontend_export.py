@@ -8,6 +8,30 @@ from torch import Tensor, nn
 from . import eot_export_ops as eot
 
 
+def _tosa_layer_norm(value: Tensor, layer: nn.LayerNorm) -> Tensor:
+    """LayerNorm expressed with Torch ops covered by the TOSA backend."""
+    if len(layer.normalized_shape) != 1:
+        raise ValueError("EOT export supports only one-dimensional LayerNorm")
+    mean = torch.mean(value, dim=-1, keepdim=True)
+    centered = value - mean
+    variance = torch.mean(centered * centered, dim=-1, keepdim=True)
+    normalized = centered * torch.rsqrt(variance + float(layer.eps))
+    if layer.elementwise_affine:
+        normalized = normalized * layer.weight
+        if layer.bias is not None:
+            normalized = normalized + layer.bias
+    return normalized
+
+
+def _run_tosa_sequential(sequence: nn.Sequential, value: Tensor) -> Tensor:
+    for layer in sequence:
+        if isinstance(layer, nn.LayerNorm):
+            value = _tosa_layer_norm(value, layer)
+        else:
+            value = layer(value)
+    return value
+
+
 class EotFrontendExportModule(nn.Module):
     def __init__(self, model: nn.Module):
         super().__init__()
@@ -37,7 +61,7 @@ class EotFrontendExportModule(nn.Module):
         # eot 是自定义算子，在mlir中生成 torch.operator "eot.*" 需要自己写pass转换
 
         point9 = eot.point_features(points, mask, 1e-8, 1e-10)
-        feat = self.point_mlp(point9)
+        feat = _run_tosa_sequential(self.point_mlp, point9)
         feat_max = eot.masked_max(feat, mask, -1e9)
         feat_mean = eot.masked_mean(feat, mask)
         feat_var = eot.masked_variance(feat, mask)
@@ -56,15 +80,18 @@ class EotFrontendExportModule(nn.Module):
                       "unexpected point feature width")
         count = mask.sum(1).to(torch.float32).clamp_min(1.0)
         qN = (torch.log1p(count) / math.log1p(float(self.cfg.n_ref))).clamp(0, 1).unsqueeze(1)
-        pi_feat = self.pi_encoder(torch.cat((point_feat, sensor_view, qN), 1))
-        c_feat = self.c_encoder(torch.cat((point_feat, qN, state_feat), 1))
+        pi_feat = _run_tosa_sequential(
+            self.pi_encoder, torch.cat((point_feat, sensor_view, qN), 1))
+        c_feat = _run_tosa_sequential(
+            self.c_encoder, torch.cat((point_feat, qN, state_feat), 1))
         c_hidden_next = eot.gru_cell(
             c_feat, c_hidden_prev, self.c_gru.weight_ih, self.c_gru.weight_hh,
             self.c_gru.bias_ih, self.c_gru.bias_hh)
-        pi_logits = self.pi_head(pi_feat)
-        tau_logits = self.tau_head(pi_feat)
-        c_xi = self.c_xi_head(c_hidden_next)
-        raw_logvar = self.c_logvar_head(c_hidden_next)
+        pi_logits = _run_tosa_sequential(self.pi_head, pi_feat)
+        tau_logits = _run_tosa_sequential(self.tau_head, pi_feat)
+        c_xi = _run_tosa_sequential(self.c_xi_head, c_hidden_next)
+        raw_logvar = _run_tosa_sequential(
+            self.c_logvar_head, c_hidden_next)
         outputs = eot.gm_parameterize(
             pi_logits, tau_logits, c_xi, raw_logvar, qN,
             float(self.cfg.c_min), float(self.cfg.c_max),
