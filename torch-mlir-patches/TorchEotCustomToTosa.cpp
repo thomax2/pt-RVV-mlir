@@ -98,7 +98,7 @@ encodeAttrs(OperatorOp op, StringRef name,
       return failure();
     return llvm::formatv(
                "{{\"radius_epsilon\":{0},\"schema_version\":1,"
-               "\"theta_epsilon\":{1}}}",
+               "\"theta_epsilon\":{1}}",
                jsonNumber(*radius), jsonNumber(*theta))
         .str();
   }
@@ -107,7 +107,7 @@ encodeAttrs(OperatorOp op, StringRef name,
     if (failed(empty))
       return failure();
     return llvm::formatv(
-               "{{\"empty_value\":{0},\"schema_version\":1}}",
+               "{{\"empty_value\":{0},\"schema_version\":1}",
                jsonNumber(*empty))
         .str();
   }
@@ -125,7 +125,7 @@ encodeAttrs(OperatorOp op, StringRef name,
     return llvm::formatv(
                "{{\"alpha_base\":{0},\"c_max\":{1},\"c_min\":{2},"
                "\"logvar_max\":{3},\"logvar_min\":{4},"
-               "\"schema_version\":1,\"tau_max\":{5},\"tau_min\":{6}}}",
+               "\"schema_version\":1,\"tau_max\":{5},\"tau_min\":{6}}",
                jsonNumber(values[4]), jsonNumber(values[1]),
                jsonNumber(values[0]), jsonNumber(values[6]),
                jsonNumber(values[5]), jsonNumber(values[3]),
