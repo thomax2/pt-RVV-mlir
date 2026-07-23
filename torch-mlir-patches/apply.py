@@ -53,7 +53,7 @@ def main() -> None:
     illegal_var = re.escape(match.group("illegal_var"))
     loop_pattern = re.compile(
         rf"^(?P<indent>[ \t]*)for\s*\(\s*auto\s+"
-        rf"[A-Za-z_][A-Za-z0-9_]*\s*:\s*{illegal_var}\s*\)\s*\{{",
+        rf"(?P<item>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*{illegal_var}\s*\)\s*\{{",
         re.MULTILINE)
     loop_match = loop_pattern.search(cpp_text, match.end())
     if not loop_match:
@@ -72,6 +72,21 @@ def main() -> None:
     if loop_end is None:
         raise RuntimeError(
             "Torch-to-TOSA illegal-op registration loop was not balanced")
+
+    filter_marker = "// EOT scalar attribute constants use dynamic legality."
+    if filter_marker not in cpp_text:
+        body_indent = loop_match.group("indent") + "  "
+        illegal_filter = (
+            f"\n{body_indent}{filter_marker}"
+            f"\n{body_indent}if ({loop_match.group('item')} =="
+            "\n"
+            f"{body_indent}    mlir::torch::Torch::ConstantFloatOp::"
+            "getOperationName())"
+            f"\n{body_indent}  continue;")
+        cpp_text = (cpp_text[:loop_match.end()] + illegal_filter +
+                    cpp_text[loop_match.end():])
+        loop_end += len(illegal_filter)
+
     call = f"\n{loop_match.group('indent')}{call_text}"
     cpp_text = cpp_text[:loop_end] + call + cpp_text[loop_end:]
 

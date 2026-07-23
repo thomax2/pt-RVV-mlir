@@ -22,8 +22,12 @@ The pattern is deliberately part of the existing dialect conversion. It uses
 the pass's `TypeConverter`, converted operand adaptor, result conversion and
 `ConversionTarget`; scalar operands are read from the original Torch op only
 when they are compile-time constants. No unrealized casts are created.
-The call is placed after the standard illegal-operation loop so the bridge's
-dynamic legality for EOT attribute constants is not overwritten.
+The applicator excludes `torch.constant.float` from the standard pass's static
+illegal-operation loop, then the bridge applies stricter dynamic legality:
+only constants used exclusively as EOT compile-time attributes are temporarily
+legal. The EOT rewrite consumes and erases them; unrelated Torch float
+constants remain illegal. The bridge registration call remains after the
+standard illegal-operation loop.
 
 The source accepts the importer spellings `eot::name`, `eot.name`, and
 `eot.name.default`, emits sorted deterministic JSON, supports the nine-result
