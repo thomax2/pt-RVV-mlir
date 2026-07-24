@@ -1,4 +1,4 @@
-#include "npu/NpuPasses.h"
+#include "eot/EotPasses.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -11,18 +11,18 @@
 
 #include <limits>
 
-namespace npu {
+namespace eot {
 #define GEN_PASS_DEF_PLANSTATICWORKSPACE
-#include "npu/NpuPasses.h.inc"
-} // namespace npu
+#include "eot/EotPasses.h.inc"
+} // namespace eot
 
 using namespace mlir;
 
 namespace {
-// Despite the compatibility command name, this pass operates only on Func and
-// MemRef IR and has no dependency on the legacy NPU dialect.
+// This pass operates only on Arith, Func, and MemRef IR. It belongs to the EOT
+// compilation pipeline but has no dependency on the EOT or legacy NPU dialect.
 struct PlanStaticWorkspacePass
-    : ::npu::impl::PlanStaticWorkspaceBase<PlanStaticWorkspacePass> {
+    : ::eot::impl::PlanStaticWorkspaceBase<PlanStaticWorkspacePass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<arith::ArithDialect, func::FuncDialect,
                     memref::MemRefDialect>();
@@ -51,7 +51,7 @@ struct PlanStaticWorkspacePass
       if (!deallocations.empty()) {
         deallocations.front().emitOpError(
             "static workspace owns planned storage; do not run a deallocation "
-            "pipeline before npu-plan-static-workspace");
+            "pipeline before eot-plan-static-workspace");
         signalPassFailure();
         return;
       }
@@ -219,12 +219,12 @@ struct PlanStaticWorkspacePass
         alloc.erase();
         currentOffsetBytes += allocationBytes;
       }
-      function->setAttr("npu.workspace_bytes",
+      function->setAttr("eot.workspace_bytes",
                         builder.getI64IntegerAttr(currentOffsetBytes));
       function->setAttr(
-          "npu.workspace_alignment",
+          "eot.workspace_alignment",
           builder.getI64IntegerAttr(requiredWorkspaceAlignment));
-      llvm::outs() << "[npu-plan-static-workspace] " << function.getName()
+      llvm::outs() << "[eot-plan-static-workspace] " << function.getName()
                    << ": " << currentOffsetBytes << " bytes, alignment "
                    << requiredWorkspaceAlignment << " bytes\n";
     }
@@ -232,6 +232,6 @@ struct PlanStaticWorkspacePass
 };
 } // namespace
 
-std::unique_ptr<mlir::Pass> npu::createPlanStaticWorkspacePass() {
+std::unique_ptr<mlir::Pass> eot::createPlanStaticWorkspacePass() {
   return std::make_unique<PlanStaticWorkspacePass>();
 }

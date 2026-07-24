@@ -2,7 +2,6 @@ add_mlir_library(
   NpuTransforms
   ConvertTosaToNpu.cpp
   ConvertNpuToVecScf.cpp
-  PlanStaticWorkspace.cpp
   DEPENDS MLIRNpuTransformsIncGen
   
   LINK_LIBS
@@ -20,4 +19,18 @@ add_mlir_library(
   MLIRTransforms
   MLIRTransformUtils
   # MLIRTosaToLLVM
+)
+
+add_mlir_library(
+  EotTransforms
+  PlanStaticWorkspace.cpp
+  DEPENDS MLIREotTransformsIncGen
+
+  LINK_LIBS
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRIR
+  MLIRMemRefDialect
+  MLIRPass
+  MLIRSupport
 )

@@ -7,6 +7,7 @@ target_link_libraries(npu-opt
   MLIRTransforms    # 对应 #include "mlir/Transforms/Passes.h"
   NpuTransforms
   EotDialect
+  EotTransforms
   EotToStandard
   TosaCustomToEot
   MLIRArithDialect

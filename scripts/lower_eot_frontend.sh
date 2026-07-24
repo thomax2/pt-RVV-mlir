@@ -13,7 +13,7 @@ mlir_build=${MLIR_BUILD:-${torch_mlir_build}}
 project_build=${PROJECT_BUILD:?set PROJECT_BUILD}
 torch_mlir_opt=${TORCH_MLIR_OPT:-${torch_mlir_build}/bin/torch-mlir-opt}
 mlir_opt=${MLIR_OPT:-${mlir_build}/bin/mlir-opt}
-npu_opt=${NPU_OPT:-${project_build}/npu-opt}
+eot_opt=${EOT_OPT:-${NPU_OPT:-${project_build}/npu-opt}}
 mlir_translate=${MLIR_TRANSLATE:-${mlir_build}/bin/mlir-translate}
 target_index_bitwidth=${TARGET_INDEX_BITWIDTH:-32}
 llvm_data_layout=${LLVM_DATA_LAYOUT:-}
@@ -53,14 +53,14 @@ cp "${input}" "${output_dir}/01_torch.mlir"
   --pass-pipeline='builtin.module(torch-backend-to-tosa-backend-pipeline)' \
   -o "${output_dir}/02_tosa_custom.mlir"
 
-"${npu_opt}" "${output_dir}/02_tosa_custom.mlir" \
+"${eot_opt}" "${output_dir}/02_tosa_custom.mlir" \
   --convert-tosa-custom-to-eot='strict=true' \
   --canonicalize --cse \
   -o "${output_dir}/03_tosa_eot.mlir"
 require_no_match 'tosa\.custom' "${output_dir}/03_tosa_eot.mlir" \
   "TOSA custom operations remain after TOSA-custom-to-EOT"
 
-"${npu_opt}" "${output_dir}/03_tosa_eot.mlir" \
+"${eot_opt}" "${output_dir}/03_tosa_eot.mlir" \
   --convert-eot-to-standard --canonicalize --cse \
   -o "${output_dir}/04_standard_tensor.mlir"
 require_no_match '(^|[^[:alnum:]_])eot\.' \
@@ -90,8 +90,8 @@ require_no_match '(^|[^[:alnum:]_])linalg\.' \
   "${output_dir}/07_loops.mlir" \
   "Linalg operations remain after loop lowering"
 
-"${npu_opt}" "${output_dir}/07_loops.mlir" \
-  --npu-plan-static-workspace \
+"${eot_opt}" "${output_dir}/07_loops.mlir" \
+  --eot-plan-static-workspace \
   -o "${output_dir}/08_workspace.mlir"
 require_no_match '(^|[^[:alnum:]_])memref\.(alloc|alloca|dealloc)([^[:alnum:]_]|$)' \
   "${output_dir}/08_workspace.mlir" \

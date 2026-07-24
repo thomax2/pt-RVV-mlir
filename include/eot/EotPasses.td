@@ -13,4 +13,9 @@ def ConvertEotToStandard : Pass<"convert-eot-to-standard", "mlir::ModuleOp"> {
   let summary = "Lower EOT domain operations to tensor/linalg/arith/math";
   let constructor = "eot::createConvertEotToStandardPass()";
 }
+
+def PlanStaticWorkspace : Pass<"eot-plan-static-workspace", "mlir::ModuleOp"> {
+  let summary = "Plan static memref allocations in an explicit byte workspace";
+  let constructor = "eot::createPlanStaticWorkspacePass()";
+}
 #endif
