@@ -1,5 +1,6 @@
 #include "npu/NpuPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -23,7 +24,8 @@ namespace {
 struct PlanStaticWorkspacePass
     : ::npu::impl::PlanStaticWorkspaceBase<PlanStaticWorkspacePass> {
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<func::FuncDialect, memref::MemRefDialect>();
+    registry.insert<arith::ArithDialect, func::FuncDialect,
+                    memref::MemRefDialect>();
   }
 
   void runOnOperation() final {
@@ -85,8 +87,27 @@ struct PlanStaticWorkspacePass
       int64_t requiredWorkspaceAlignment = 16;
       for (memref::AllocOp alloc : allocations) {
         MemRefType type = alloc.getType();
-        if (!type.hasStaticShape() || !type.getElementType().isF32()) {
-          alloc.emitOpError("static workspace requires a static f32 memref");
+        if (!type.hasStaticShape()) {
+          alloc.emitOpError("static workspace requires a static memref");
+          signalPassFailure();
+          return;
+        }
+        Type elementType = type.getElementType();
+        int64_t bitWidth = 0;
+        if (auto integerType = dyn_cast<IntegerType>(elementType))
+          bitWidth = integerType.getWidth();
+        else if (auto floatType = dyn_cast<FloatType>(elementType))
+          bitWidth = floatType.getWidth();
+        else {
+          alloc.emitOpError(
+              "static workspace supports only integer and floating-point "
+              "element types");
+          signalPassFailure();
+          return;
+        }
+        if (bitWidth == 0) {
+          alloc.emitOpError(
+              "static workspace requires an element type with a known width");
           signalPassFailure();
           return;
         }
@@ -105,10 +126,9 @@ struct PlanStaticWorkspacePass
         if (auto alignment =
                 alloc->getAttrOfType<IntegerAttr>("alignment")) {
           int64_t value = alignment.getInt();
-          if (value <= 0 || !llvm::isPowerOf2_64(value) ||
-              value % static_cast<int64_t>(sizeof(float)) != 0) {
+          if (value <= 0 || !llvm::isPowerOf2_64(value)) {
             alloc.emitOpError(
-                "alignment must be a positive power-of-two multiple of four");
+                "alignment must be a positive power of two in bytes");
             signalPassFailure();
             return;
           }
@@ -118,7 +138,7 @@ struct PlanStaticWorkspacePass
       }
 
       auto workspaceType =
-          MemRefType::get({ShapedType::kDynamic}, builder.getF32Type());
+          MemRefType::get({ShapedType::kDynamic}, builder.getI8Type());
       SmallVector<Type> newInputs(oldInputs);
       newInputs.append(oldResults);
       newInputs.push_back(workspaceType);
@@ -141,25 +161,30 @@ struct PlanStaticWorkspacePass
         ret.erase();
       }
 
-      int64_t currentOffset = 0;
+      int64_t currentOffsetBytes = 0;
       for (memref::AllocOp alloc : allocations) {
         MemRefType type = alloc.getType();
+        Type elementType = type.getElementType();
+        int64_t bitWidth = isa<IntegerType>(elementType)
+                               ? cast<IntegerType>(elementType).getWidth()
+                               : cast<FloatType>(elementType).getWidth();
+        // LLVM allocates sub-byte integer elements in addressable byte units.
+        int64_t elementBytes = (bitWidth + 7) / 8;
         int64_t allocationAlignment = 16;
         if (auto alignment =
                 alloc->getAttrOfType<IntegerAttr>("alignment"))
           allocationAlignment = std::max(allocationAlignment,
                                          alignment.getInt());
-        int64_t alignmentElements =
-            allocationAlignment / static_cast<int64_t>(sizeof(float));
-        if (currentOffset >
-            std::numeric_limits<int64_t>::max() - (alignmentElements - 1)) {
+        if (currentOffsetBytes >
+            std::numeric_limits<int64_t>::max() -
+                (allocationAlignment - 1)) {
           alloc.emitOpError("static workspace offset overflow");
           signalPassFailure();
           return;
         }
-        currentOffset = llvm::alignTo(currentOffset, alignmentElements);
+        currentOffsetBytes =
+            llvm::alignTo(currentOffsetBytes, allocationAlignment);
 
-        SmallVector<int64_t> staticStrides(type.getRank());
         int64_t elementCount = 1;
         for (int64_t dim : type.getShape()) {
           if (dim != 0 &&
@@ -170,41 +195,37 @@ struct PlanStaticWorkspacePass
           }
           elementCount *= dim;
         }
-        if (elementCount >
-            std::numeric_limits<int64_t>::max() - currentOffset) {
+        if (elementCount != 0 &&
+            elementBytes >
+                std::numeric_limits<int64_t>::max() / elementCount) {
+          alloc.emitOpError("static workspace byte-size overflow");
+          signalPassFailure();
+          return;
+        }
+        int64_t allocationBytes = elementCount * elementBytes;
+        if (allocationBytes >
+            std::numeric_limits<int64_t>::max() - currentOffsetBytes) {
           alloc.emitOpError("static workspace size overflow");
           signalPassFailure();
           return;
         }
-        int64_t stride = 1;
-        for (int64_t i = type.getRank() - 1; i >= 0; --i) {
-          staticStrides[i] = stride;
-          stride *= type.getDimSize(i);
-        }
-        SmallVector<OpFoldResult> sizes, strides;
-        for (int64_t dim : type.getShape())
-          sizes.push_back(builder.getIndexAttr(dim));
-        for (int64_t value : staticStrides)
-          strides.push_back(builder.getIndexAttr(value));
+
         builder.setInsertionPoint(alloc);
-        auto layout = StridedLayoutAttr::get(&getContext(), currentOffset,
-                                             staticStrides);
-        auto viewType = MemRefType::get(type.getShape(), type.getElementType(),
-                                        layout, type.getMemorySpace());
-        Value view = builder.create<memref::ReinterpretCastOp>(
-            alloc.getLoc(), viewType, workspace,
-            builder.getIndexAttr(currentOffset), sizes, strides);
+        Value byteShift = builder.create<arith::ConstantIndexOp>(
+            alloc.getLoc(), currentOffsetBytes);
+        Value view = builder.create<memref::ViewOp>(
+            alloc.getLoc(), type, workspace, byteShift, ValueRange{});
         alloc.replaceAllUsesWith(view);
         alloc.erase();
-        currentOffset += elementCount;
+        currentOffsetBytes += allocationBytes;
       }
-      function->setAttr("npu.workspace_elements",
-                        builder.getI64IntegerAttr(currentOffset));
+      function->setAttr("npu.workspace_bytes",
+                        builder.getI64IntegerAttr(currentOffsetBytes));
       function->setAttr(
           "npu.workspace_alignment",
           builder.getI64IntegerAttr(requiredWorkspaceAlignment));
       llvm::outs() << "[npu-plan-static-workspace] " << function.getName()
-                   << ": " << currentOffset << " f32 elements, alignment "
+                   << ": " << currentOffsetBytes << " bytes, alignment "
                    << requiredWorkspaceAlignment << " bytes\n";
     }
   }

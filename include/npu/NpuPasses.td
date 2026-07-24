@@ -20,7 +20,7 @@ def ConvertNpuToVecScf : Pass<"convert-npu-to-vecscf"> {
 }
 
 def PlanStaticWorkspace : Pass<"npu-plan-static-workspace", "mlir::ModuleOp"> {
-    let summary = "Plan static memref allocations in an explicit workspace";
+    let summary = "Plan static memref allocations in an explicit byte workspace";
     let constructor = "npu::createPlanStaticWorkspacePass()";
 }
 
