@@ -15,7 +15,7 @@ def ConvertEotToStandard : Pass<"convert-eot-to-standard", "mlir::ModuleOp"> {
 }
 
 def PlanStaticWorkspace : Pass<"eot-plan-static-workspace", "mlir::ModuleOp"> {
-  let summary = "Plan static memref allocations in an explicit byte workspace";
+  let summary = "Plan static memrefs in a lifetime-aware byte workspace";
   let constructor = "eot::createPlanStaticWorkspacePass()";
 }
 #endif
